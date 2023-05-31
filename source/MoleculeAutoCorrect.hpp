@@ -183,7 +183,7 @@ public:
     settings(settings),
     molecular_keys(molecule) {
     TagMolecule(*this, true);
-    foreign_environments = ForeignEnvironments(molecule, *settings->dictionary);
+    foreign_environments = ForeignEnvironments(*this, *settings->dictionary);
     n_foreign_atoms = NForeignAtoms();
     n_foreign_bonds= NForeignBonds();
     n_foreign_environments = foreign_environments.size();
