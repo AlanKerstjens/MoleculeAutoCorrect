@@ -75,7 +75,6 @@ struct Settings {
     constraints(constraints) {};
 };
 
-
 std::vector<CircularAtomicEnvironment> ForeignEnvironments(
   const RDKit::ROMol& molecule,
   const ChemicalDictionary& dictionary) {
@@ -94,10 +93,9 @@ std::vector<MolecularPerturbation::Target> TargetPriority(
   const RDKit::ROMol& molecule,
   const std::vector<AtomKey>& atom_keys,
   const std::vector<BondKey>& bond_keys,
+  const std::vector<CircularAtomicEnvironment>& foreign_environments,
   const ChemicalDictionary& dictionary) {
   std::vector<MolecularPerturbation::Target> priorities;
-  std::vector<CircularAtomicEnvironment> foreign_environments = 
-    ForeignEnvironments(molecule, dictionary);
   if (foreign_environments.empty()) {
     return priorities;
   };
@@ -442,6 +440,7 @@ private:
           *this,
           molecular_keys.atom_keys,
           molecular_keys.bond_keys,
+          foreign_environments,
           *(settings->dictionary));
         setup_environment_perturbations = true;
       };
