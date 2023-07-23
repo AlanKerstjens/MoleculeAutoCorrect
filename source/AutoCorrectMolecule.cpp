@@ -18,7 +18,6 @@ int main(int argc, char* argv[]) {
   if (argc > 4) {
     only_decorate = std::stoi(argv[4]);
   };
-  std::size_t n_top_solutions = n_solutions > 10 ? n_solutions : 10;
 
   ChemicalDictionary dictionary (dictionary_path);
 
@@ -28,8 +27,8 @@ int main(int argc, char* argv[]) {
   };
 
   MoleculeAutoCorrect::Settings settings (&perturber, &dictionary);
-  settings.tree_policy_type = 
-    MoleculeAutoCorrect::Settings::TreePolicyType::MLR;
+  settings.n_solutions = n_solutions;
+  settings.n_top_solutions = n_solutions > 10 ? n_solutions : 10;
 
   RDKit::RWMOL_SPTR molecule;
   try {
@@ -41,8 +40,7 @@ int main(int argc, char* argv[]) {
   };
 
   auto begin_time = std::chrono::high_resolution_clock::now();
-  MoleculeAutoCorrect::Result result = AutoCorrectMolecule(
-    *molecule, settings, n_solutions, n_top_solutions);
+  MoleculeAutoCorrect::Result result = AutoCorrectMolecule(*molecule, settings);
   auto end_time = std::chrono::high_resolution_clock::now();
   auto elapsed_time = std::chrono::duration_cast<std::chrono::milliseconds>
     (end_time - begin_time);

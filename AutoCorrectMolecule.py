@@ -1,4 +1,5 @@
 import os
+import time
 import argparse
 from rdkit import Chem
 import molpert as mpt
@@ -12,7 +13,7 @@ def ParseArgs():
         help="Path to chemical dictionary.")
     parser.add_argument("smiles", type=str,
         help="Input molecule SMILES string.")
-    parser.add_argument("-p", "--policy", type=str, default="Familiarity",
+    parser.add_argument("-p", "--policy", type=str, default="MLR",
         choices=["Familiarity", "BFS", "DistanceNormalizedFamiliarity",
                  "UCT", "Astar", "MLR"],
         help="Tree search vertex selection policy type.")
@@ -25,26 +26,11 @@ def ParseArgs():
     parser.add_argument("-do", "--decorate_only", action="store_true",
         help="Flag to only enable decorative perturbations.")
     parser.add_argument("-da", "--disable_atom_insertions", action="store_true",
-        help="Flag to disable atom insertions in bond and environment correction.")
+        help="Flag to disable atom insertions.")
     args = parser.parse_args()
     if not os.path.isfile(args.dictionary):
         raise parser.error("dictionary isn't a file.")
     return args
-
-def TreePolicyType(policy_name):
-    if policy_name == "Familiarity":
-        return mac.Settings.TreePolicyType.Familiarity
-    elif policy_name == "BFS":
-        return mac.Settings.TreePolicyType.BFS
-    elif policy_name == "DistanceNormalizedFamiliarity":
-        return mac.Settings.TreePolicyType.DistanceNormalizedFamiliarity
-    elif policy_name == "UCT":
-        return mac.Settings.TreePolicyType.UCT
-    elif policy_name == "Astar":
-        return mac.Settings.TreePolicyType.Astar
-    elif policy_name == "MLR":
-        return mac.Settings.TreePolicyType.MLR
-    raise ValueError("Unknown policy name")
 
 def Main():
     args = ParseArgs()
@@ -56,18 +42,34 @@ def Main():
         perturber.SetDecorationSettings()
 
     settings = mac.Settings(perturber, dictionary)
-    settings.tree_policy_type = TreePolicyType(args.policy)
     settings.max_tree_size = args.max_tree_size
     settings.max_tree_depth = args.max_tree_depth
+    settings.n_solutions = args.n_solutions
+    settings.n_top_solutions = args.n_solutions
     if args.disable_atom_insertions:
+        settings.attempt_degree_correction_with_insertions = False
         settings.attempt_bond_correction_with_atom_insertions = False
         settings.attempt_environment_correction_with_atom_insertions = False
 
-    molecule = Chem.MolFromSmiles(args.smiles, sanitize=False)
-    mpt.PartialSanitization(molecule)
+    policy_types = {
+        "Familiarity": mac.Policy.Type.Familiarity,
+        "BFS": mac.Policy.Type.BFS,
+        "DistanceNormalizedFamiliarity": mac.Policy.Type.DistanceNormalizedFamiliarity,
+        "UCT": mac.Policy.Type.UCT,
+        "Astar": mac.Policy.Type.Astar,
+        "MLR": mac.Policy.Type.MLR}
 
-    result = mac.AutoCorrectMolecule(molecule, settings, 
-        n_solutions=args.n_solutions, n_top_solutions=args.n_solutions)
+    molecule = Chem.MolFromSmiles(args.smiles, sanitize=False)
+
+    start_time = time.perf_counter_ns()
+    mpt.PartialSanitization(molecule)
+    result = mac.AutoCorrectMolecule(
+        molecule=molecule,
+        settings=settings,
+        selection_policy_type=policy_types[args.policy])
+    end_time = time.perf_counter_ns()
+    
+    print(f"Search terminated after {result.n_expansions} expansions ({(end_time - start_time)/1e6:.0f} ms)")
     for discovery in result.top_discoveries:
         print((f"Molecule: {Chem.MolToSmiles(discovery.molecule)}, "
                f"Familiarity: {discovery.familiarity}, "

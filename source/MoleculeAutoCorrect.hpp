@@ -1,10 +1,10 @@
-#pragma once
-#ifndef _MOLECULE_AUTO_CORRECT_
-#define _MOLECULE_AUTO_CORRECT_
+#ifndef _MOLECULE_AUTO_CORRECT_HPP_
+#define _MOLECULE_AUTO_CORRECT_HPP_
 
 #include "TreeSearch.hpp"
 #include "MoleculePerturber.hpp"
 #include "MolecularPerturbationUtils.hpp"
+#include "FunctionalArithmetic.hpp"
 #include "ChemicalDictionary.hpp"
 
 namespace MoleculeAutoCorrect {
@@ -23,17 +23,6 @@ struct Settings {
   const MoleculePerturber* perturber = nullptr;
   const ChemicalDictionary* dictionary = nullptr;
   const MolecularConstraints* constraints = nullptr;
-
-  enum class TreePolicyType {
-    Familiarity,
-    BFS,
-    DistanceNormalizedFamiliarity,
-    UCT,
-    Astar,
-    MLR};
-  TreePolicyType tree_policy_type = TreePolicyType::Familiarity;
-
-  double uct_c = 0.5;
 
   // By default the least significant perturbations, that is, "decorations", are
   // applied before the more significant perturbations changing the topology.
@@ -65,14 +54,8 @@ struct Settings {
 
   std::size_t max_tree_size = 25000;
   std::size_t max_tree_depth = 25;
-
-  Settings(
-    const MoleculePerturber* perturber,
-    const ChemicalDictionary* dictionary,
-    const MolecularConstraints* constraints = nullptr) :
-    perturber(perturber),
-    dictionary(dictionary),
-    constraints(constraints) {};
+  std::size_t n_solutions = 1;
+  std::size_t n_top_solutions = 1;
 };
 
 std::vector<CircularAtomicEnvironment> ForeignEnvironments(
@@ -533,22 +516,6 @@ std::optional<Vertex> Expansion(Vertex& vertex) {
   return vertex.Expand();
 };
 
-class TerminationPolicy {
-  std::size_t n_familiar_vertices = 0;
-  std::size_t max_n_familiar_vertices = 0;
-
-public:
-  TerminationPolicy(std::size_t max_n_familiar_vertices = 1) :
-    max_n_familiar_vertices(max_n_familiar_vertices) {};
-
-  bool operator()(const TreeSearch<Vertex>& tree_search) {
-    auto lv = tree_search.GetLastVertexDescriptor();
-    const Vertex& last_vertex = tree_search.GetVertex(lv);
-    n_familiar_vertices += last_vertex.IsFamiliar();
-    return n_familiar_vertices >= max_n_familiar_vertices;
-  };
-};
-
 struct MoleculeDiscovery {
   RDKit::ROMol molecule;
   TreeSearch<Vertex>::Tree::vertex_descriptor vertex = 0;
@@ -563,13 +530,43 @@ struct Result {
 };
 
 
+namespace Policy {
+
+
 namespace Objective {
 
-typedef std::function<
-  double(
-    const TreeSearch<Vertex>&,
-    TreeSearch<Vertex>::Tree::vertex_descriptor)> 
-TreeVertexObjective;
+// The function signature of our objectives is:
+// double(
+//   const TreeSearch<Vertex>&,
+//   TreeSearch<Vertex>::Tree::vertex_descriptor)>
+// The reason for using this signature as opposed to double(const RDKit::ROMol&)
+// is that the former allows us to retrieve information about the Vertex and its
+// position within the TreeSearch, enabling more sophisticated policies.
+
+// Combining objectives is a powerful way of fine-tuning policies. The Function
+// class wraps a function with the signature double(Args...) and overloads 
+// arithmetic operators for it. Wrapper is a specialization of Function where
+// Args... is set to match the signature of our objectives.
+typedef Function<
+  const TreeSearch<Vertex>&,
+  TreeSearch<Vertex>::Tree::vertex_descriptor> Wrapper;
+
+// Users might get confused by the template classes. They may prefer to define
+// objectives as double(const RDKit::ROMol&). This class wraps the former as a
+// double(Args...).
+class MoleculeObjective {
+  std::function<double(const RDKit::ROMol&)> objective;
+public:
+  MoleculeObjective(
+    const std::function<double(const RDKit::ROMol&)>& objective) : 
+      objective(objective) {};
+  
+  double operator()(
+    const TreeSearch<Vertex>& tree_search,
+    TreeSearch<Vertex>::Tree::vertex_descriptor v) const {
+    return objective(tree_search.GetVertex(v));
+  };
+};
 
 double Familiarity1(
   const TreeSearch<Vertex>& tree_search,
@@ -608,89 +605,87 @@ public:
   };
 };
 
-class CrowDistanceMLR {
-  TopologicalSimilarity similarity_to_root;
+}; // ! MoleculeAutoCorrect::Policy::Objective namespace
 
-public:
-  CrowDistanceMLR(
-    const RDKit::ROMol& root_molecule) :
-    similarity_to_root(root_molecule) {};
-  
-  double operator()(
-    const TreeSearch<Vertex>& tree_search,
-    TreeSearch<Vertex>::Tree::vertex_descriptor v) const {
-    double f1 = Objective::Familiarity1(tree_search, v);
-    double distance_to_root = 1.0 - similarity_to_root(tree_search, v);
-    return 0.42 * distance_to_root + 0.91 * (1.0 - f1) + 0.27;
-  };
+
+// Virtually all policies can be expressed as a GreedyPolicy, provided that we
+// adjust the objective on which the GreedyPolicy selects and tries to maximize.
+enum class Type {
+  BFS,
+  Familiarity,
+  DistanceNormalizedFamiliarity,
+  Astar,
+  UCT,
+  MLR
 };
 
-class Sum {
-  TreeVertexObjective objective1;
-  TreeVertexObjective objective2;
-
-public:
-  Sum(
-    const TreeVertexObjective& objective1,
-    const TreeVertexObjective& objective2) :
-    objective1(objective1),
-    objective2(objective2) {};
-
-  double operator()(
-    const TreeSearch<Vertex>& tree_search,
-    TreeSearch<Vertex>::Tree::vertex_descriptor v) const {
-    return objective1(tree_search, v) + objective2(tree_search, v);
-  };
+struct BFS : GreedyPolicy<Vertex> {
+  BFS(const RDKit::ROMol& root_molecule) : 
+    GreedyPolicy<Vertex>(Objective::TopologicalSimilarity(root_molecule)) {};
 };
 
-class Normalized {
-  TreeVertexObjective numerator_objective;
-  TreeVertexObjective denominator_objective;
-
-public:
-  Normalized(
-    const TreeVertexObjective& numerator_objective,
-    const TreeVertexObjective& denominator_objective) :
-    numerator_objective(numerator_objective),
-    denominator_objective(denominator_objective) {};
-
-  double operator()(
-    const TreeSearch<Vertex>& tree_search,
-    TreeSearch<Vertex>::Tree::vertex_descriptor v) const {
-    return numerator_objective(tree_search, v) / 
-      denominator_objective(tree_search, v);
-  };
+struct Familiarity : GreedyPolicy<Vertex> {
+  Familiarity() : GreedyPolicy<Vertex>(Objective::Familiarity1) {};
 };
 
-class Reciprocal {
-  TreeVertexObjective objective;
-
-public:
-  Reciprocal(const TreeVertexObjective& objective) :
-    objective(objective) {};
-
-  double operator()(
-    const TreeSearch<Vertex>& tree_search,
-    TreeSearch<Vertex>::Tree::vertex_descriptor v) const {
-    return 1.0 / objective(tree_search, v);
-  };
+struct DistanceNormalizedFamiliarity : GreedyPolicy<Vertex> {
+  DistanceNormalizedFamiliarity(const RDKit::ROMol& root_molecule) : 
+    GreedyPolicy<Vertex>(
+      Objective::Wrapper(Objective::Familiarity1) / 
+      (1.0 - Objective::Wrapper(Objective::TopologicalSimilarity(root_molecule)))) {};
 };
 
-class Complement {
-  TreeVertexObjective objective;
+struct Astar : GreedyPolicy<Vertex> {
+  Astar(const RDKit::ROMol& root_molecule) :
+    // Selecting the vertex with the highest sum of similarities is equal to 
+    // selecting the vertex with the lowest sum of distances.
+    GreedyPolicy<Vertex>(
+      Objective::Wrapper(Objective::TopologicalSimilarity(root_molecule)) +
+      Objective::Wrapper(Objective::Familiarity1)) {};
+};
 
-public:
-  Complement(const TreeVertexObjective& objective) :
-    objective(objective) {};
+typedef UpperConfidenceTree<Vertex> UCT;
 
-  double operator()(
-    const TreeSearch<Vertex>& tree_search,
-    TreeSearch<Vertex>::Tree::vertex_descriptor v) const {
-    return 1.0 - objective(tree_search, v);
-  };
+struct MLR : GreedyPolicy<Vertex> {
+  MLR(const RDKit::ROMol& root_molecule) : GreedyPolicy<Vertex>(
+    1.0 - ( // Maximize the complement of the MLR distance (i.e. similarity)
+      0.42 
+      * (1.0 - Objective::Wrapper(Objective::TopologicalSimilarity(root_molecule)))
+      + 0.91 
+      * (1.0 - Objective::Wrapper(Objective::Familiarity1))
+      + 0.27
+    )) {};
+};
+
+struct ObjectivePreservation : GreedyPolicy<Vertex> {
+  ObjectivePreservation(
+    const std::function<double(const RDKit::ROMol&)>& objective) :
+    GreedyPolicy<Vertex>(
+      Objective::Wrapper(Objective::Familiarity1) * 
+      Objective::Wrapper(Objective::MoleculeObjective(objective))) {};
 };
 
 }; // ! MoleculeAutoCorrect::Policy namespace
+
+
+typedef TreeSearch<Vertex>::SelectionPolicy SelectionPolicy;
+typedef TreeSearch<Vertex>::RewardFunction RewardFunction;
+
+class TerminationPolicy {
+  std::size_t n_familiar_vertices = 0;
+  std::size_t max_n_familiar_vertices = 0;
+
+public:
+  TerminationPolicy(std::size_t max_n_familiar_vertices = 1) :
+    max_n_familiar_vertices(max_n_familiar_vertices) {};
+
+  bool operator()(const TreeSearch<Vertex>& tree_search) {
+    auto lv = tree_search.GetLastVertexDescriptor();
+    const Vertex& last_vertex = tree_search.GetVertex(lv);
+    n_familiar_vertices += last_vertex.IsFamiliar();
+    return n_familiar_vertices >= max_n_familiar_vertices;
+  };
+};
 
 }; // ! MoleculeAutoCorrect namespace
 
@@ -698,45 +693,11 @@ public:
 MoleculeAutoCorrect::Result AutoCorrectMolecule(
   const RDKit::ROMol& molecule,
   const MoleculeAutoCorrect::Settings& settings,
-  std::size_t n_solutions = 1,
-  std::size_t n_top_solutions = 1) {
+  const MoleculeAutoCorrect::SelectionPolicy& selection_policy,
+  const MoleculeAutoCorrect::RewardFunction& reward_function = nullptr) {
   using namespace MoleculeAutoCorrect;
   Result result;
-  result.top_discoveries.reserve(n_top_solutions);
-
-  TreeSearch<Vertex>::TreePolicy tree_policy;
-  TreeSearch<Vertex>::RewardFunction reward_function;
-  switch (settings.tree_policy_type) {
-    case Settings::TreePolicyType::BFS:
-      tree_policy = GreedyPolicy<Vertex>(
-        Objective::TopologicalSimilarity(molecule));
-      break;
-    case Settings::TreePolicyType::Familiarity:
-      tree_policy = GreedyPolicy<Vertex>(Objective::Familiarity1);
-      break;
-    case Settings::TreePolicyType::DistanceNormalizedFamiliarity:
-      tree_policy = GreedyPolicy<Vertex>(
-        Objective::Normalized(
-          Objective::Familiarity1, 
-          Objective::Complement(Objective::TopologicalSimilarity(molecule))));
-      break;
-    case Settings::TreePolicyType::UCT:
-      tree_policy = UCT<Vertex>(settings.uct_c);
-      reward_function = Familiarity;
-      break;
-    case Settings::TreePolicyType::Astar:
-      // Selecting the vertex with the highest sum of similarities is equal to 
-      // selecting the vertex with the lowest sum of distances.
-      tree_policy = GreedyPolicy<Vertex>(
-        Objective::Sum(
-          Objective::Familiarity1, 
-          Objective::TopologicalSimilarity(molecule)));
-      break;
-    case Settings::TreePolicyType::MLR:
-      tree_policy = GreedyPolicy<Vertex>(
-        Objective::Complement(Objective::CrowDistanceMLR(molecule)));
-      break;
-  };
+  result.top_discoveries.reserve(settings.n_top_solutions);
 
   TreeSearch<Vertex> tree_search (
     Vertex(molecule, &settings),
@@ -745,10 +706,11 @@ MoleculeAutoCorrect::Result AutoCorrectMolecule(
     settings.max_tree_size + 1,
     settings.max_tree_depth);
   result.n_expansions = tree_search.Search(
-    tree_policy,
-    TerminationPolicy(n_solutions)) - 1;
+    selection_policy,
+    TerminationPolicy(settings.n_solutions)) - 1;
   
-  auto top_vertices = tree_search.TopVertices(Familiarity, n_top_solutions);
+  auto top_vertices = tree_search.TopVertices(
+    Familiarity, settings.n_top_solutions);
   const auto& vertex_depths = tree_search.GetVertexDepths();
   for (auto [v, familiarity] : top_vertices) {
     const Vertex& vertex = tree_search.GetVertex(v);
@@ -758,4 +720,39 @@ MoleculeAutoCorrect::Result AutoCorrectMolecule(
   return result;
 };
 
-#endif // !_MOLECULE_AUTO_CORRECT_
+MoleculeAutoCorrect::Result AutoCorrectMolecule(
+  const RDKit::ROMol& molecule,
+  const MoleculeAutoCorrect::Settings& settings,
+  MoleculeAutoCorrect::Policy::Type selection_policy_type = 
+    MoleculeAutoCorrect::Policy::Type::MLR) {
+  using namespace MoleculeAutoCorrect;
+  SelectionPolicy selection_policy = nullptr;
+  RewardFunction reward_function = nullptr;
+  switch (selection_policy_type) {
+    case Policy::Type::BFS:
+      selection_policy = Policy::BFS(molecule);
+      break;
+    case Policy::Type::Familiarity:
+      selection_policy = Policy::Familiarity();
+      break;
+    case Policy::Type::DistanceNormalizedFamiliarity:
+      selection_policy = Policy::DistanceNormalizedFamiliarity(molecule);
+      break;
+    case Policy::Type::Astar:
+      selection_policy = Policy::Astar(molecule);
+      break;
+    case Policy::Type::UCT:
+      selection_policy = Policy::UCT(0.5);
+      reward_function = Familiarity;
+      break;
+    case Policy::Type::MLR:
+      selection_policy = Policy::MLR(molecule);
+      break;
+    default:
+      selection_policy = Policy::MLR(molecule);
+  };
+  return AutoCorrectMolecule(molecule, settings,
+    selection_policy, reward_function);
+};
+
+#endif // !_MOLECULE_AUTO_CORRECT_HPP_

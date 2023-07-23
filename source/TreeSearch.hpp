@@ -1,4 +1,3 @@
-#pragma once
 #ifndef _TREE_SEARCH_HPP_
 #define _TREE_SEARCH_HPP_
 
@@ -25,7 +24,7 @@ public:
   // The policy may signal the end of the search by returning second false.
   typedef std::function<
     std::pair<typename Tree::vertex_descriptor, bool>(const TreeSearch&)
-  > TreePolicy;
+  > SelectionPolicy;
 
   // Function returning a new Vertex from an existing Vertex. The function is
   // allowed to fail and return a std::nullopt. Note that the call may modify
@@ -162,10 +161,10 @@ private:
 
 public:
   std::size_t Search(
-    const TreePolicy& tree_policy,
+    const SelectionPolicy& selection_policy,
     const TerminationPolicy& terminator) {
     while (boost::num_vertices(tree) < max_n_vertices) {
-      auto [parent, selected] = tree_policy(*this);
+      auto [parent, selected] = selection_policy(*this);
       if (!selected) {
         break;
       };
@@ -333,7 +332,7 @@ public:
 };
 
 template <class Vertex>
-class UCT {
+class UpperConfidenceTree {
   typedef TreeSearch<Vertex>::Tree Tree;
   double c = 1.0;
 
@@ -350,7 +349,7 @@ private:
   };
 
 public:
-  UCT(double c = sqrt(2)) : c(c) {};
+  UpperConfidenceTree(double c = sqrt(2)) : c(c) {};
 
   std::pair<typename Tree::vertex_descriptor, bool> operator()(
     const TreeSearch<Vertex>& tree_search) const {
