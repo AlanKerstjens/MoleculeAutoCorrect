@@ -42,10 +42,10 @@ export PYTHONPATH="${PYTHONPATH}:${MOLECULE_AUTO_CORRECT}/lib"
 
 CMake will try to find the rest of the dependencies for you. To avoid problems ensure you build the software with the same Boost and Python versions that you used to build Molpert and the RDKit. If CMake finds a different Boost or Python installation you'll need to point it to the correct one, as described [here](https://cmake.org/cmake/help/latest/module/FindBoost.html) and [here](https://cmake.org/cmake/help/latest/module/FindPython.html).
 
-CMake will search for the RDKit in the active Anaconda environment (if you have one) and at `${RDBASE}` if set. If neither of these are the case you need to specify the path to the RDKit yourself. Replace the above CMake command with the one below, substituting the `<placeholder/path>` with your path.
+CMake will search for the RDKit in the active Anaconda environment (if you have one) and at `${RDBASE}` if set. If neither of these are the case you need to specify the path to the RDKit yourself. Replace the above CMake command with the one below, substituting the `<placeholder/path>` with your paths.
 
 ```shell
-cmake -DRDKit_ROOT=<path/to/rdkit> ..
+cmake -DRDKit_ROOT=<path/to/rdkit> -DMolpert_INCLUDE_DIRS=<path/to/molpert> ..
 ```
 
 # Quick start
