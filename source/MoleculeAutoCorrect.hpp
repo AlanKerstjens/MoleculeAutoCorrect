@@ -605,6 +605,16 @@ public:
   };
 };
 
+struct Constant {
+  double x = 0.0;
+  Constant(double x) : x(x) {};
+  double operator()(
+    const TreeSearch<Vertex>& tree_search,
+    TreeSearch<Vertex>::Tree::vertex_descriptor v) const {
+    return x;
+  };
+};
+
 }; // ! MoleculeAutoCorrect::Policy::Objective namespace
 
 
@@ -663,6 +673,10 @@ struct ObjectivePreservation : GreedyPolicy<Vertex> {
     GreedyPolicy<Vertex>(
       Objective::Wrapper(Objective::Familiarity1) * 
       Objective::Wrapper(Objective::MoleculeObjective(objective))) {};
+};
+
+struct Dummy : GreedyPolicy<Vertex> {
+  Dummy(double x) : GreedyPolicy<Vertex>(Objective::Constant(x)) {};
 };
 
 }; // ! MoleculeAutoCorrect::Policy namespace
