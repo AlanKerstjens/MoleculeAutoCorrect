@@ -14,8 +14,8 @@ def ParseArgs():
     parser.add_argument("smiles", type=str,
         help="Input molecule SMILES string.")
     parser.add_argument("-p", "--policy", type=str, default="MLR",
-        choices=["Familiarity", "BFS", "DistanceNormalizedFamiliarity",
-                 "UCT", "Astar", "MLR"],
+        choices=["BFS", "Familiarity1", "Familiarity2",
+                 "DistanceNormalizedFamiliarity", "UCT", "Astar", "MLR"],
         help="Tree search vertex selection policy type.")
     parser.add_argument("-s", "--max_tree_size", type=int, default=1000,
         help="Maximum tree size.")
@@ -52,8 +52,9 @@ def Main():
         settings.attempt_environment_correction_with_atom_insertions = False
 
     policy_types = {
-        "Familiarity": mac.Policy.Type.Familiarity,
         "BFS": mac.Policy.Type.BFS,
+        "Familiarity1": mac.Policy.Type.Familiarity1,
+        "Familiarity2": mac.Policy.Type.Familiarity2,
         "DistanceNormalizedFamiliarity": mac.Policy.Type.DistanceNormalizedFamiliarity,
         "UCT": mac.Policy.Type.UCT,
         "Astar": mac.Policy.Type.Astar,

@@ -483,8 +483,9 @@ public:
   };
 
   double Familiarity2() const {
-    double n_atoms = getNumAtoms();
-    return (n_atoms - n_foreign_environments) / n_atoms;
+    double n_foreign_keys = 
+      n_foreign_atoms + n_foreign_bonds + n_foreign_environments;
+    return 1.0 / (n_foreign_keys + 1.0);
   };
 
   bool IsFamiliar() const {
@@ -508,8 +509,12 @@ public:
 
 namespace MoleculeAutoCorrect {
 
-double Familiarity(const Vertex& vertex) {
+double Familiarity1(const Vertex& vertex) {
   return vertex.Familiarity1();
+};
+
+double Familiarity2(const Vertex& vertex) {
+  return vertex.Familiarity2();
 };
 
 std::optional<Vertex> Expansion(Vertex& vertex) {
@@ -620,7 +625,8 @@ struct Constant {
 
 enum class Type {
   BFS,
-  Familiarity,
+  Familiarity1,
+  Familiarity2,
   DistanceNormalizedFamiliarity,
   Astar,
   UCT,
@@ -635,8 +641,12 @@ struct BFS : GreedyPolicy<Vertex> {
     GreedyPolicy<Vertex>(Objective::TopologicalSimilarity(root_molecule)) {};
 };
 
-struct Familiarity : GreedyPolicy<Vertex> {
-  Familiarity() : GreedyPolicy<Vertex>(Objective::Familiarity1) {};
+struct Familiarity1 : GreedyPolicy<Vertex> {
+  Familiarity1() : GreedyPolicy<Vertex>(Objective::Familiarity1) {};
+};
+
+struct Familiarity2 : GreedyPolicy<Vertex> {
+  Familiarity2() : GreedyPolicy<Vertex>(Objective::Familiarity2) {};
 };
 
 struct DistanceNormalizedFamiliarity : GreedyPolicy<Vertex> {
@@ -727,7 +737,7 @@ MoleculeAutoCorrect::Result AutoCorrectMolecule(
     TerminationPolicy(settings.n_solutions)) - 1;
   
   auto top_vertices = tree_search.TopVertices(
-    Familiarity, settings.n_top_solutions);
+    Familiarity1, settings.n_top_solutions);
   const auto& vertex_depths = tree_search.GetVertexDepths();
   for (auto [v, familiarity] : top_vertices) {
     const Vertex& vertex = tree_search.GetVertex(v);
@@ -749,8 +759,11 @@ MoleculeAutoCorrect::Result AutoCorrectMolecule(
     case Policy::Type::BFS:
       selection_policy = Policy::BFS(molecule);
       break;
-    case Policy::Type::Familiarity:
-      selection_policy = Policy::Familiarity();
+    case Policy::Type::Familiarity1:
+      selection_policy = Policy::Familiarity1();
+      break;
+    case Policy::Type::Familiarity2:
+      selection_policy = Policy::Familiarity2();
       break;
     case Policy::Type::DistanceNormalizedFamiliarity:
       selection_policy = Policy::DistanceNormalizedFamiliarity(molecule);
@@ -760,7 +773,7 @@ MoleculeAutoCorrect::Result AutoCorrectMolecule(
       break;
     case Policy::Type::UCT:
       selection_policy = Policy::UCT(0.5);
-      reward_function = Familiarity;
+      reward_function = Familiarity1;
       break;
     case Policy::Type::MLR:
       selection_policy = Policy::MLR(molecule);

@@ -116,8 +116,10 @@ void WrapMoleculeAutoCorrect() {
   python::enum_<MoleculeAutoCorrect::Policy::Type>("Type")
     .value("BFS", 
       MoleculeAutoCorrect::Policy::Type::BFS)
-    .value("Familiarity", 
-      MoleculeAutoCorrect::Policy::Type::Familiarity)
+    .value("Familiarity1", 
+      MoleculeAutoCorrect::Policy::Type::Familiarity1)
+    .value("Familiarity2", 
+      MoleculeAutoCorrect::Policy::Type::Familiarity2)
     .value("DistanceNormalizedFamiliarity", 
       MoleculeAutoCorrect::Policy::Type::DistanceNormalizedFamiliarity)
     .value("Astar", 
