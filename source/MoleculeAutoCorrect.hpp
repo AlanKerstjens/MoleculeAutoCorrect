@@ -618,17 +618,18 @@ struct Constant {
 }; // ! MoleculeAutoCorrect::Policy::Objective namespace
 
 
-// Virtually all policies can be expressed as a GreedyPolicy, provided that we
-// adjust the objective on which the GreedyPolicy selects and tries to maximize.
 enum class Type {
   BFS,
   Familiarity,
   DistanceNormalizedFamiliarity,
   Astar,
   UCT,
-  MLR
+  MLR,
+  Random
 };
 
+// Virtually all policies can be expressed as a GreedyPolicy, provided that we
+// adjust the objective on which the GreedyPolicy selects and tries to maximize.
 struct BFS : GreedyPolicy<Vertex> {
   BFS(const RDKit::ROMol& root_molecule) : 
     GreedyPolicy<Vertex>(Objective::TopologicalSimilarity(root_molecule)) {};
@@ -674,6 +675,8 @@ struct ObjectivePreservation : GreedyPolicy<Vertex> {
       Objective::Wrapper(Objective::Familiarity1) * 
       Objective::Wrapper(Objective::MoleculeObjective(objective))) {};
 };
+
+typedef RandomPolicy<Vertex> Random;
 
 struct Dummy : GreedyPolicy<Vertex> {
   Dummy(double x) : GreedyPolicy<Vertex>(Objective::Constant(x)) {};

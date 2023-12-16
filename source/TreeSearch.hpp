@@ -4,6 +4,7 @@
 #include <boost/graph/adjacency_list.hpp>
 #include <boost/dynamic_bitset.hpp>
 #include <concepts>
+#include <random>
 #include <queue>
 #include <cmath>
 
@@ -377,5 +378,41 @@ public:
   };
 };
 
+template <class Vertex>
+class RandomPolicy {
+  typedef TreeSearch<Vertex>::Tree Tree;
+  std::mt19937 prng;
+
+public:
+  RandomPolicy() {
+    std::random_device rd;
+    prng.seed(rd());
+  };
+
+  RandomPolicy(std::mt19937::result_type seed) {
+    prng.seed(seed);
+  };
+
+  std::pair<typename Tree::vertex_descriptor, bool> operator()(
+    const TreeSearch<Vertex>& tree_search) {
+    const Tree& tree = tree_search.GetTree();
+    const auto& vertex_expandable = tree_search.GetExpandableVerticesMask();
+    std::size_t n_vertices = boost::num_vertices(tree);
+    if (n_vertices < 2) {
+      return {0, n_vertices ? vertex_expandable[0] : false};
+    };
+    std::uniform_int_distribution<std::size_t> distribution (0, n_vertices - 1);
+    std::size_t vertex_idx = distribution(prng);
+    for (std::size_t i = 0; i < n_vertices; ++i) {
+      if (vertex_expandable[vertex_idx]) {
+        return {vertex_idx, true};
+      };
+      if (++vertex_idx >= n_vertices) {
+        vertex_idx = 0;
+      };
+    };
+    return {0, false};
+  };
+};
 
 #endif // !_TREE_SEARCH_HPP_
