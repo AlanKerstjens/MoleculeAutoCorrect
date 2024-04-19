@@ -2,6 +2,9 @@
 
 Spell checker for your molecular graphs. A virtual library of reference correct molecules is used to build a dictionary of allowed chemical features. The chemical features of input molecules are compared against this dictionary. If any invalid features are present the molecule is modified in a controlled way to find a closely related valid molecule.
 
+For more information on the algorithm please read the accompanying paper:
+[Kerstjens, A., De Winter, H. Molecule auto-correction to facilitate molecular design. J Comput Aided Mol Des 38, 10 (2024).](https://doi.org/10.1007/s10822-024-00549-1)
+
 # Installation
 
 ## Installation from source
